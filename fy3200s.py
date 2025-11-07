@@ -147,6 +147,111 @@ class FY3200S:
             return
         self.send_command(f"be{n:09d}")
 
+    # --- Arbitrary waveform upload (binary protocol) ---
+    def _write_bytes(self, data: bytes):
+        if not (self.ser and self.ser.is_open):
+            raise RuntimeError("Serial port not connected")
+        self.ser.write(data)
+
+    def _read_exact(self, n: int) -> bytes:
+        if not (self.ser and self.ser.is_open):
+            raise RuntimeError("Serial port not connected")
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.ser.read(n - len(buf))
+            if not chunk:
+                break
+            buf.extend(chunk)
+        return bytes(buf)
+
+    def upload_arbitrary(self, bank: int, samples, progress_cb=None) -> bool:
+        """Upload 2048-point arbitrary waveform to specified bank (1-4).
+
+        samples: iterable of 2048 floats in [-1,1] or ints already in [0,4095].
+        progress_cb(optional): callable(bytes_sent:int, total_bytes:int) -> None
+        """
+        if not (self.ser and self.ser.is_open):
+            print("Not connected: cannot upload waveform")
+            return False
+        if bank not in (1, 2, 3, 4):
+            print("Invalid bank; must be 1..4")
+            return False
+        # Prepare data buffer (2048 samples, 16-bit little-endian; use 12-bit range 0..4095)
+        vals = []
+        for v in samples:
+            if isinstance(v, (int,)):
+                iv = int(v)
+            else:
+                try:
+                    fv = float(v)
+                except Exception:
+                    fv = 0.0
+                iv = int(round((max(-1.0, min(1.0, fv)) + 1.0) * 2047.5))
+            iv = max(0, min(4095, iv))
+            vals.append(iv)
+            if len(vals) == 2048:
+                break
+        if len(vals) != 2048:
+            # pad or error; pad with midline
+            vals += [2048] * (2048 - len(vals))
+        # Build bytes (LSB first)
+        data = bytearray()
+        for iv in vals:
+            data.append(iv & 0xFF)
+            data.append((iv >> 8) & 0xFF)
+
+        total = len(data)  # 4096
+        def report(sent):
+            if progress_cb:
+                try:
+                    progress_cb(sent, total)
+                except Exception:
+                    pass
+
+        # Flush any pending input
+        try:
+            self.ser.reset_input_buffer()
+        except Exception:
+            pass
+
+        # Step 1: Initialize upload: send magic + 0xA5, expect 'X'
+        self._write_bytes(b'DDS_WAVE' + bytes([0xA5]))
+        if self._read_exact(1) != b'X':
+            print("Handshake failed (A5 -> X)")
+            return False
+
+        # Step 2: Erase memory slot: magic + 0xF{bank}, expect 'SE'
+        self._write_bytes(b'DDS_WAVE' + bytes([0xF0 + bank]))
+        if self._read_exact(2) != b'SE':
+            print("Erase ack failed (expected 'SE')")
+            return False
+
+        # Step 3: Begin upload: magic + 0x0{bank}, expect 'W'
+        self._write_bytes(b'DDS_WAVE' + bytes([0x00 + bank]))
+        if self._read_exact(1) != b'W':
+            print("Begin upload ack failed (expected 'W')")
+            return False
+
+        # Step 4: Send data with 'X' ack per byte; send in small chunks
+        sent = 0
+        chunk_size = 8 # 8 bytes per chunk seems to balance speed/reliability
+        while sent < total:
+            chunk = data[sent: sent + chunk_size]
+            self._write_bytes(chunk)
+            # Wait for same number of 'X' bytes
+            acked = 0
+            while acked < len(chunk):
+                a = self._read_exact(len(chunk) - acked)
+                if not a:
+                    print("Timed out waiting for acks")
+                    return False
+                # Count only 'X' bytes
+                acked += sum(1 for b in a if b == 0x58)
+            sent += len(chunk)
+            report(sent)
+
+        return True
+
     # --- Measurement commands ---
     def measure_frequency(self) -> str | None:
         """Request the measured frequency. Sends `ce` and returns the device response as string."""

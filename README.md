@@ -36,6 +36,17 @@ python main.py
   - Frequency: press `Start` to begin polling once per second (sends `ce`). The returned value is interpreted as centi-Hz (0.01 Hz) and displayed in Hz with two decimals.
   - Count: press `Start` to begin polling once per second (sends `cc`) and view integer counts. Press `Clear` to send `bc` and zero the device counter.
 
+  **Arbitrary Waveform Editor (ArbWave)**
+  - The `ArbWave` tab provides a 2048-sample arbitrary waveform editor and uploader.
+  - Canvas: draw a waveform sampled to 2048 points, amplitude range [-1.0, 1.0].
+  - Tools: `Pen` (freehand strokes), `Line` (draw straight segments), `Pan` (move view).
+  - View controls: toggle `Grid`, enable `Snap` (quantize vertical steps), `+`/`-` to zoom horizontally, and `Fit` to reset view.
+  - Undo/Redo: per-stroke undo/redo is supported; the toolbar `Undo`/`Redo` buttons revert or reapply the last edits.
+  - Banks & Upload: select one of four banks (`Arb 1..4`) and press `Upload to Bank` to send the waveform to the device.
+    - Upload protocol: the GUI converts the 2048 float samples into the device's 12-bit binary format (4096 bytes, LSB-first) and performs the documented handshake (erase, begin, then data transfer). A progress dialog shows transfer progress.
+    - Requirements: the device must be connected (`Connect`) before uploading. The upload shows progress; canceling the dialog will mark the operation cancelled in the UI, but mid-transfer abort behavior depends on the device and current implementation (the dialog can request cancel, but in-flight transfers may or may not be interrupted immediately).
+
+
 **Protocol notes**
 - Commands are ASCII lines terminated with LF (`\n`). The UI sends a short 100 ms pause after each command to avoid overrun of the device parser.
 - Measured frequency responses are in centi-Hz; the GUI converts to Hz by dividing by 100 before display.
