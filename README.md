@@ -6,6 +6,8 @@ A small Python PySide6 GUI to control the FY3200S two-channel function generator
 - **Purpose**: Provide an easy GUI for configuring both channels, triggers, sweeps and measurement polling.
 - **Files**: `main.py` (GUI), `fy3200s.py` (protocol wrapper), `FY3200S.md` (protocol reference).
 
+<img width="941" height="481" alt="image" src="https://github.com/user-attachments/assets/efc55ded-4454-4547-9695-c83c8cb3468e" />
+
 **Requirements**
 - **Python**: 3.8+ (use a virtual environment).
 - **Packages**: Listed in `requirements.txt` (at minimum `pyserial` and `PySide6`).
